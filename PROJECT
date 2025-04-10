@@ -7,4 +7,12 @@ layout:
 - go.kubebuilder.io/v4
 projectName: nnf-storedversions-maint
 repo: github.com/NearNodeFlash/nnf-storedversions-maint
+resources:
+- controller: true
+  domain: k8s.io
+  external: true
+  group: migration
+  kind: StorageVersionMigration
+  path: sigs.k8s.io/kube-storage-version-migrator/pkg/apis/migration/v1alpha1
+  version: v1alpha1
 version: "3"
