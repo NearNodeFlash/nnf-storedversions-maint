@@ -1,5 +1,8 @@
 # nnf-storedversions-maint
-// TODO(user): Add simple overview of use/purpose
+
+Nnf-storedversions-maint maintains the `status.storedVersions` list in certain CustomResourceDefinitions (CRD), and is used together with [kube-storage-version-migrator](https://github.com/NearNodeFlash/kube-storage-version-migrator/tree/nnf-main) (see the `nnf-main` branch there). The **kube-storage-version-migrator** service migrates the resources of a CRD to the latest `storage` version of that CRD, and **nnf-storedversions-maint** then updates the `storedVersions` list in the CRD to remove the unused API versions. This maintenance is necessary to allow older API versions to be removed during future upgrades of those CRDs.
+
+This tool maintains the CRDs in the `nnf.cray.hpe.com`, `lus.cray.hpe.com`, and `dataworkflowservices.github.io` groups.
 
 ## Description
 // TODO(user): An in-depth paragraph about your project and overview of use
@@ -16,7 +19,7 @@
 **Build and push your image to the location specified by `IMG`:**
 
 ```sh
-make docker-build docker-push IMG=<some-registry>/nnf-storedversions-maint:tag
+make docker-build docker-push IMG=<some-registry>/nnf-storedversions-maint VERSION=tag
 ```
 
 **NOTE:** This image ought to be published in the personal registry you specified.
@@ -32,7 +35,7 @@ make install
 **Deploy the Manager to the cluster with the image specified by `IMG`:**
 
 ```sh
-make deploy IMG=<some-registry>/nnf-storedversions-maint:tag
+make deploy IMG=<some-registry>/nnf-storedversions-maint VERSION=tag
 ```
 
 > **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
@@ -75,7 +78,7 @@ Following the options to release and provide this solution to the users.
 1. Build the installer for the image built and published in the registry:
 
 ```sh
-make build-installer IMG=<some-registry>/nnf-storedversions-maint:tag
+make build-installer IMG=<some-registry>/nnf-storedversions-maint VERSION=tag
 ```
 
 **NOTE:** The makefile target mentioned above generates an 'install.yaml'
