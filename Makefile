@@ -1,3 +1,20 @@
+# Copyright 2025 Hewlett Packard Enterprise Development LP
+# Other additional copyright holders may be indicated within.
+#
+# The entirety of this work is licensed under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
 
@@ -42,12 +59,25 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+manifests: controller-gen manifests-for-tests ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+	# WARNING: Do not let this go into the test/e2e APIs.
+	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./internal/..." output:crd:artifacts:config=config/crd/bases
+
+.PHONY: manifests-for-tests
+manifests-for-tests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+	$(CONTROLLER_GEN) crd paths=./test/e2e/release1/api/... output:crd:artifacts:config=test/e2e/release1/config/crd/bases
+	$(CONTROLLER_GEN) crd paths=./test/e2e/release2/api/... output:crd:artifacts:config=test/e2e/release2/config/crd/bases
+	$(CONTROLLER_GEN) crd paths=./test/e2e/release3/api/... output:crd:artifacts:config=test/e2e/release3/config/crd/bases
 
 .PHONY: generate
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+generate: controller-gen generate-for-tests ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+
+.PHONY: generate-for-tests
+generate-for-tests: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths=./test/e2e/release1/api/...
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths=./test/e2e/release2/api/...
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths=./test/e2e/release3/api/...
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -58,8 +88,18 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet setup-envtest ## Run tests.
+test:
+	@echo "Use 'make test-e2e'"
+
+.PHONY: test-original
+test-original: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+
+E2E_SVM_NAME = storage-version-migrator
+E2E_SVM = test/e2e/$(E2E_SVM_NAME)
+E2E_SVM_TMP = test/e2e/tmp
+E2E_SVM_YAMLS = $(E2E_SVM_TMP)/$(E2E_SVM_NAME)
+SVM_RELEASE = v0.1.2
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
@@ -75,7 +115,22 @@ test-e2e: manifests generate fmt vet ## Run the e2e tests. Expected an isolated 
 		echo "No Kind cluster is running. Please start a Kind cluster before running the e2e tests."; \
 		exit 1; \
 	}
-	go test ./test/e2e/ -v -ginkgo.v
+	[ -f $(E2E_SVM_TMP)/manifests.tar ] || { \
+		mkdir -p $(E2E_SVM_TMP) || exit 1; \
+		wget -O $(E2E_SVM_TMP)/manifests.tar https://github.com/NearNodeFlash/kube-storage-version-migrator/releases/download/$(SVM_RELEASE)/manifests.tar || exit 1; \
+		tar -C $(E2E_SVM_TMP) -xf $(E2E_SVM_TMP)/manifests.tar || exit 1; \
+		cp $(E2E_SVM)/kustomization.yaml $(E2E_SVM_YAMLS) || exit 1; \
+	}
+	kubectl wait deploy -n kube-system migrator --for jsonpath='{.status.availableReplicas}=1' || { \
+		kubectl apply -k $(E2E_SVM_YAMLS) || exit 1; \
+	}
+	kubectl wait deploy -n kube-system migrator --for jsonpath='{.status.availableReplicas}=1'
+	kubectl wait deploy -n kube-system trigger --for jsonpath='{.status.availableReplicas}=1'
+	CERT_MANAGER_INSTALL_SKIP=true go test ./test/e2e/ -v -ginkgo.v
+
+.PHONY: clean
+clean:
+	rm -rf $(E2E_SVM_TMP)
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
@@ -143,9 +198,33 @@ endif
 install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) apply -f -
 
+.PHONY: install-test-release1
+install-test-release1: manifests-for-tests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
+	$(KUSTOMIZE) build test/e2e/release1/config/crd | $(KUBECTL) apply -f -
+
+.PHONY: install-test-release2
+install-test-release2: manifests-for-tests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
+	$(KUSTOMIZE) build test/e2e/release2/config/crd | $(KUBECTL) apply -f -
+
+.PHONY: install-test-release3
+install-test-release3: manifests-for-tests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
+	$(KUSTOMIZE) build test/e2e/release3/config/crd | $(KUBECTL) apply -f -
+
 .PHONY: uninstall
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+
+.PHONY: uninstall-test-release1
+uninstall-test-release1: manifests-for-tests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE) build test/e2e/release1/config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+
+.PHONY: uninstall-test-release2
+uninstall-test-release2: manifests-for-tests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE) build test/e2e/release2/config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+
+.PHONY: uninstall-test-release3
+uninstall-test-release3: manifests-for-tests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE) build test/e2e/release3/config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.

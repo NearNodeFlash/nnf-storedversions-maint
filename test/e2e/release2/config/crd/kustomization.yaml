@@ -1,0 +1,3 @@
+resources:
+- bases/nnf.cray.hpe.com_svmtests.yaml
+

@@ -17,19 +17,23 @@
  * limitations under the License.
  */
 
-package controller
+// Package v42alpha1 contains API Schema definitions for the v42alpha1 API group.
+// +kubebuilder:object:generate=true
+// +groupName=nnf.cray.hpe.com
+package v42alpha1
 
 import (
-	. "github.com/onsi/ginkgo/v2"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
-var _ = Describe("StorageVersionMigration Controller", func() {
-	Context("When reconciling a resource", func() {
+var (
+	// GroupVersion is group version used to register these objects.
+	GroupVersion = schema.GroupVersion{Group: "nnf.cray.hpe.com", Version: "v42alpha1"}
 
-		It("should successfully reconcile the resource", func() {
+	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
+	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
 
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
-		})
-	})
-})
+	// AddToScheme adds the types in this group-version to the given scheme.
+	AddToScheme = SchemeBuilder.AddToScheme
+)
