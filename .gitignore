@@ -27,4 +27,9 @@ go.work
 *~
 
 test/e2e/tmp/
+.version
+config/begin/*
+
+# .vscode log files
+.vscode/*.log
 
