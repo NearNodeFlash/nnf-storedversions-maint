@@ -253,6 +253,12 @@ undeploy: kustomize edit-image ## Undeploy controller from the K8s cluster speci
 .version: ## Uses the git-version-gen script to generate a tag version
 	./git-version-gen --fallback `git rev-parse HEAD` > .version
 
+nnf-manifests: kustomize edit-image
+	rm -rf nnf-storedversions-maint
+	mkdir nnf-storedversions-maint
+	$(KUSTOMIZE) build config/begin > nnf-storedversions-maint/nnf-storedversions-maint.yaml
+	tar cf manifests.tar nnf-storedversions-maint 
+
 .PHONY: clean
 clean:
 	rm -rf $(E2E_SVM_TMP)
