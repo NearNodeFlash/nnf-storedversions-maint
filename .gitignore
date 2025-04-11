@@ -27,4 +27,11 @@ go.work
 *~
 
 test/e2e/tmp/
+.version
+config/begin/*
+nnf-storedversions-maint/
+manifests.tar
+
+# .vscode log files
+.vscode/*.log
 

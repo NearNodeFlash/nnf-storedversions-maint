@@ -16,7 +16,11 @@
 # limitations under the License.
 
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= ghcr.io/nearnodeflash/nnf-storedversions-maint
+
+# To use the 'dp0' overlay:
+#   make deploy OVERLAY=dp0
+OVERLAY ?= default
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -128,10 +132,6 @@ test-e2e: manifests generate fmt vet ## Run the e2e tests. Expected an isolated 
 	kubectl wait deploy -n kube-system trigger --for jsonpath='{.status.availableReplicas}=1'
 	CERT_MANAGER_INSTALL_SKIP=true go test ./test/e2e/ -v -ginkgo.v
 
-.PHONY: clean
-clean:
-	rm -rf $(E2E_SVM_TMP)
-
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run
@@ -158,12 +158,14 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+docker-build: VERSION ?= $(shell cat .version)
+docker-build: .version ## Build docker image with the manager.
+	$(CONTAINER_TOOL) build -t $(IMG):$(VERSION) .
 
 .PHONY: docker-push
-docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
+docker-push: VERSION ?= $(shell cat .version)
+docker-push: .version ## Push docker image with the manager.
+	$(CONTAINER_TOOL) push $(IMG):$(VERSION)
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -173,12 +175,13 @@ docker-push: ## Push docker image with the manager.
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
+docker-buildx: VERSION ?= $(shell cat .version)
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name nnf-storedversions-maint-builder
 	$(CONTAINER_TOOL) buildx use nnf-storedversions-maint-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag $(IMG):$(VERSION) -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx rm nnf-storedversions-maint-builder
 	rm Dockerfile.cross
 
@@ -187,6 +190,10 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	mkdir -p dist
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
+
+kind-push: VERSION ?= $(shell cat .version)
+kind-push: .version ## Push docker image to kind
+	kind load docker-image $(IMG):$(VERSION)
 
 ##@ Deployment
 
@@ -226,14 +233,36 @@ uninstall-test-release2: manifests-for-tests kustomize ## Uninstall CRDs from th
 uninstall-test-release3: manifests-for-tests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build test/e2e/release3/config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
+.PHONY: edit-image
+edit-image: VERSION ?= $(shell cat .version)
+edit-image: .version
+	$(KUSTOMIZE_IMAGE_TAG) config/begin $(OVERLAY) $(IMG) $(VERSION) $(VERSION)
+
 .PHONY: deploy
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
+deploy: manifests kustomize edit-image ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+	./deploy.sh deploy $(KUSTOMIZE) config/begin
 
 .PHONY: undeploy
-undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+undeploy: kustomize edit-image ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+	./deploy.sh undeploy $(KUSTOMIZE) config/$(OVERLAY)
+
+# Let .version be phony so that a git update to the workarea can be reflected
+# in it each time it's needed.
+.PHONY: .version
+.version: ## Uses the git-version-gen script to generate a tag version
+	./git-version-gen --fallback `git rev-parse HEAD` > .version
+
+nnf-manifests: kustomize edit-image
+	rm -rf nnf-storedversions-maint
+	mkdir nnf-storedversions-maint
+	$(KUSTOMIZE) build config/begin > nnf-storedversions-maint/nnf-storedversions-maint.yaml
+	tar cf manifests.tar nnf-storedversions-maint 
+
+.PHONY: clean
+clean:
+	rm -rf $(E2E_SVM_TMP)
+	rm -f .version
 
 ##@ Dependencies
 
@@ -243,6 +272,7 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 ## Tool Binaries
+KUSTOMIZE_IMAGE_TAG ?= ./hack/make-kustomization.sh
 KUBECTL ?= kubectl
 KIND ?= kind
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
