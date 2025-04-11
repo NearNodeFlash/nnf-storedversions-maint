@@ -6,7 +6,7 @@ on:
 
 jobs:
   lint:
-    name: Run on Ubuntu
+    name: Linter
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
@@ -24,7 +24,7 @@ jobs:
 
   test-e2e:
     needs: lint
-    name: Run on Ubuntu
+    name: Test e2e
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
@@ -53,6 +53,7 @@ jobs:
           make test-e2e
 
   build:
+    name: Build and push
     needs: test-e2e
     runs-on: ubuntu-latest
     steps:
@@ -122,6 +123,7 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
 
   create_release:
+    name: Create Release
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
