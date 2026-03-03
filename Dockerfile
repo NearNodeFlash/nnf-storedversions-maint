@@ -1,4 +1,4 @@
-# Copyright 2025 Hewlett Packard Enterprise Development LP
+# Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 # Other additional copyright holders may be indicated within.
 #
 # The entirety of this work is licensed under the Apache License,
@@ -16,7 +16,7 @@
 # limitations under the License.
 
 # Build the manager binary
-FROM docker.io/golang:1.23 AS builder
+FROM docker.io/golang:1.25 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 

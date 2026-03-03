@@ -133,7 +133,9 @@ var _ = Describe("Manager", Ordered, func() {
 		// Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 		By("deploying the controller-manager")
-		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImageBase), fmt.Sprintf("VERSION=%s", projectVersion))
+		cmd = exec.Command("make", "deploy",
+			fmt.Sprintf("IMG=%s", projectImageBase),
+			fmt.Sprintf("VERSION=%s", projectVersion))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 	})
@@ -496,7 +498,7 @@ var _ = Describe("Manager", Ordered, func() {
 	}) // Context("Migration Activity")
 })
 
-func waitForCRDResourceVersionBump(k8sClient client.Client, crd *apiextensionsv1.CustomResourceDefinition) *apiextensionsv1.CustomResourceDefinition {
+func waitForCRDResourceVersionBump(k8sClient client.Client, crd *apiextensionsv1.CustomResourceDefinition) *apiextensionsv1.CustomResourceDefinition { //nolint:lll
 	GinkgoHelper()
 	By("WAITING **UP TO 3 MINUTES** for the CRD resource version to change")
 	var freshCrd *apiextensionsv1.CustomResourceDefinition = nil
@@ -511,7 +513,7 @@ func waitForCRDResourceVersionBump(k8sClient client.Client, crd *apiextensionsv1
 	return freshCrd
 }
 
-func waitForCRDResourceVersionToNotChange(k8sClient client.Client, crd *apiextensionsv1.CustomResourceDefinition) *apiextensionsv1.CustomResourceDefinition {
+func waitForCRDResourceVersionToNotChange(k8sClient client.Client, crd *apiextensionsv1.CustomResourceDefinition) *apiextensionsv1.CustomResourceDefinition { //nolint:lll
 	GinkgoHelper()
 	By("WAITING **2 MINUTES** to confirm that the CRD resource version does not change")
 	var freshCrd *apiextensionsv1.CustomResourceDefinition = nil
@@ -563,7 +565,7 @@ func findStorageVersionMigration(crdName string) string {
 	cmdList := exec.Command(kcmd[0], kcmd[1:]...)
 	output, err := utils.Run(cmdList)
 	if err == nil {
-		for _, line := range strings.Split(output, "\n") {
+		for line := range strings.SplitSeq(output, "\n") {
 			if strings.Contains(line, crdName) {
 				return line
 			}
@@ -617,14 +619,14 @@ func waitForStorageMigration(crd *apiextensionsv1.CustomResourceDefinition) {
 		cmd := exec.Command("kubectl", "get", "storageversionmigrations", migrationResource, "-o", "json")
 		output, err := utils.Run(cmd)
 		if err == nil && output != "" {
-			var result map[string]interface{}
+			var result map[string]any
 			err = json.Unmarshal([]byte(output), &result)
 			if err != nil {
 				return fmt.Errorf("failed to unmarshal JSON: %v", err)
 			}
 
 			// Check if the API version in .spec.resource.version is the same as the CRD API storage version.
-			specResource, ok := result["spec"].(map[string]interface{})["resource"].(map[string]interface{})
+			specResource, ok := result["spec"].(map[string]any)["resource"].(map[string]any)
 			if !ok {
 				return fmt.Errorf("failed to find spec.resource in JSON output")
 			}
@@ -633,19 +635,20 @@ func waitForStorageMigration(crd *apiextensionsv1.CustomResourceDefinition) {
 				return fmt.Errorf("failed to find spec.resource.version in JSON output")
 			}
 			if resourceVersion != apiStorageVersion {
-				return fmt.Errorf("StorageVersionMigration resource version %s does not match CRD storage version %s", resourceVersion, apiStorageVersion)
+				return fmt.Errorf("StorageVersionMigration resource version %s does not match CRD storage version %s",
+					resourceVersion, apiStorageVersion)
 			}
 
 			// Check if the status conditions array has a condition with type "Succeeded" and status "True"
 			if _, ok := result["status"]; !ok {
 				return fmt.Errorf("failed to find status in JSON output")
 			}
-			conditions, ok := result["status"].(map[string]interface{})["conditions"].([]interface{})
+			conditions, ok := result["status"].(map[string]any)["conditions"].([]any)
 			if !ok {
 				return fmt.Errorf("failed to find conditions in JSON output")
 			}
 			for _, condition := range conditions {
-				cond, ok := condition.(map[string]interface{})
+				cond, ok := condition.(map[string]any)
 				if !ok {
 					return fmt.Errorf("failed to convert condition to map")
 				}
