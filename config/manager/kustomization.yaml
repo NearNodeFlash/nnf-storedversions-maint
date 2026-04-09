@@ -6,5 +6,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/nearnodeflash/nnf-storedversions-maint
-  newTag: latest
-
+  newTag: 0.1.5
