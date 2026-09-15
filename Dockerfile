@@ -16,9 +16,13 @@
 # limitations under the License.
 
 # Build the manager binary
-FROM docker.io/golang:1.26 AS builder
+# Pinned to the exact patch release the customer supports; see "Go toolchain" in README.md.
+FROM docker.io/golang:1.26.5 AS builder
 ARG TARGETOS
 ARG TARGETARCH
+
+# Fail the build rather than silently downloading a newer toolchain if go.mod ever asks for one.
+ENV GOTOOLCHAIN=local
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
