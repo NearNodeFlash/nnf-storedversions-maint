@@ -69,6 +69,41 @@ make uninstall
 make undeploy
 ```
 
+## Metrics
+
+The controller-runtime metrics endpoint is **disabled**. Nothing in NNF scrapes it, and the
+Kubebuilder-scaffolded authn/authz filter that protected it
+(`filters.WithAuthenticationAndAuthorization`) linked `k8s.io/apiserver`, `cel-go`, `antlr`,
+`konnectivity-client`, OpenTelemetry and `google.golang.org/grpc` into the manager. That added 27
+module requirements and roughly 37MB of binary for code that was never executed, and it was the
+source of most of this repo's recurring Dependabot advisories.
+
+Nothing was deleted — the manifests and the e2e test are still present, just commented out or
+skipped. To re-enable:
+
+1. `cmd/main.go` — restore the import `"sigs.k8s.io/controller-runtime/pkg/metrics/filters"` and,
+   after `metricsServerOptions` is built, restore:
+
+   ```go
+   if secureMetrics {
+       metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
+   }
+   ```
+
+   Skipping this step leaves `:8443` unauthenticated; in that case enable `../network-policy`
+   in step 2 as well, so only namespaces labeled `metrics: enabled` can reach it.
+2. `config/default/kustomization.yaml` — uncomment `- metrics_service.yaml`, and the `patches:` key
+   together with its `manager_metrics_patch.yaml` entry (that patch passes
+   `--metrics-bind-address=:8443`; the manager's default is `0`, meaning off).
+3. `config/rbac/kustomization.yaml` — uncomment `metrics_auth_role.yaml`,
+   `metrics_auth_role_binding.yaml` and `metrics_reader_role.yaml`.
+4. `test/e2e/e2e_test.go` — drop the `Skip(...)` at the top of
+   "should ensure the metrics endpoint is serving metrics".
+5. Run `go mod tidy && go mod vendor` to pull the dependency tree back in.
+
+For Prometheus scraping and cert-manager-issued serving certs, also uncomment the `[PROMETHEUS]`
+and `[METRICS-WITH-CERTS]` sections in `config/default/kustomization.yaml`.
+
 ## Project Distribution
 
 Following the options to release and provide this solution to the users.

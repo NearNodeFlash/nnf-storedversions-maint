@@ -247,6 +247,8 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		It("should ensure the metrics endpoint is serving metrics", func() {
+			Skip("the metrics endpoint is disabled; see \"Metrics\" in README.md to re-enable it")
+
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
 				"--clusterrole=nnf-storedversions-maint-metrics-reader",
