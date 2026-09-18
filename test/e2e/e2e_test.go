@@ -56,6 +56,11 @@ const namespace = "nnf-storedversions-maint-system"
 // serviceAccountName created for the project
 const serviceAccountName = "nnf-storedversions-maint-controller-manager"
 
+// svmResource is the fully-qualified resource name for the migrator's StorageVersionMigration CRD.
+// Kubernetes 1.37 ships a built-in storagemigration.k8s.io group with the same resource name,
+// and kubectl resolves a bare "storageversionmigrations" to that (empty) built-in API instead.
+const svmResource = "storageversionmigrations.migration.k8s.io"
+
 // metricsServiceName is the name of the metrics service of the project
 const metricsServiceName = "nnf-storedversions-maint-controller-manager-metrics-service"
 
@@ -247,6 +252,8 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		It("should ensure the metrics endpoint is serving metrics", func() {
+			Skip("the metrics endpoint is disabled; see \"Metrics\" in README.md to re-enable it")
+
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
 				"--clusterrole=nnf-storedversions-maint-metrics-reader",
@@ -383,7 +390,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 				By("Fetching StorageVersionMigration resource")
 				svmName := findStorageVersionMigration(svmCrdFullName)
-				cmd := exec.Command("kubectl", "get", "storageversionmigration", svmName, "-o", "yaml")
+				cmd := exec.Command("kubectl", "get", svmResource, svmName, "-o", "yaml")
 				svmResource, err := utils.Run(cmd)
 				if err == nil {
 					_, _ = fmt.Fprintf(GinkgoWriter, "StorageVersionMigration resource:\n %s", svmResource)
@@ -555,14 +562,13 @@ func removeStorageVersionMigration(crdName string) {
 	migrationResource := findStorageVersionMigration(crdName)
 	if migrationResource != "" {
 		By(fmt.Sprintf("removing StorageVersionMigration %s", migrationResource))
-		cmd := exec.Command("kubectl", "delete", "storageversionmigration", migrationResource)
+		cmd := exec.Command("kubectl", "delete", svmResource, migrationResource)
 		_, _ = utils.Run(cmd)
 	}
 }
 
 func findStorageVersionMigration(crdName string) string {
-	kcmd := strings.Split("kubectl get storageversionmigrations --no-headers -o custom-columns=NAME:.metadata.name", " ")
-	cmdList := exec.Command(kcmd[0], kcmd[1:]...)
+	cmdList := exec.Command("kubectl", "get", svmResource, "--no-headers", "-o", "custom-columns=NAME:.metadata.name")
 	output, err := utils.Run(cmdList)
 	if err == nil {
 		for line := range strings.SplitSeq(output, "\n") {
@@ -616,7 +622,7 @@ func waitForStorageMigration(crd *apiextensionsv1.CustomResourceDefinition) {
 		}
 
 		By("waiting for completion of StorageVersionMigration " + migrationResource)
-		cmd := exec.Command("kubectl", "get", "storageversionmigrations", migrationResource, "-o", "json")
+		cmd := exec.Command("kubectl", "get", svmResource, migrationResource, "-o", "json")
 		output, err := utils.Run(cmd)
 		if err == nil && output != "" {
 			var result map[string]any
