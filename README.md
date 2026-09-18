@@ -10,10 +10,33 @@ This tool maintains the CRDs in the `nnf.cray.hpe.com`, `lus.cray.hpe.com`, and 
 ## Getting Started
 
 ### Prerequisites
-- go version v1.23.0+
+- go version v1.26.5 — see [Go toolchain](#go-toolchain) below
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
+
+### Go toolchain
+
+The manager is built with **exactly Go 1.26.5**, the latest release the customer supports.
+That version is pinned in three places and they must move together:
+
+- `go.mod` — the `go 1.26.5` directive. CI's `setup-go` reads this file, so CI builds with 1.26.5.
+- `Dockerfile` — `FROM docker.io/golang:1.26.5`, with `GOTOOLCHAIN=local` so the build fails
+  loudly instead of auto-downloading a newer toolchain if `go.mod` is ever bumped past the image.
+- `.devcontainer/devcontainer.json` — same image.
+
+Do not use the floating `golang:1.26` tag; it already resolves to a later patch release.
+
+A `toolchain` directive cannot serve as the pin: `go mod tidy` removes it when it matches the `go`
+line. The shipped artifact is the Docker image, so that is where the pin is enforced. Local builds
+on a machine with a newer Go will use the newer toolchain under the default `GOTOOLCHAIN=auto`; run
+`GOTOOLCHAIN=go1.26.5 make build` to reproduce the release build exactly.
+
+**Known residual:** `govulncheck ./...` reports Go standard-library advisories that are fixed in
+go1.26.6 (`net/url`, `crypto/tls`, `net/http`, `encoding/asn1`, and the `idna` check in
+`net/http`). These cannot be addressed by a module bump; they clear only when the supported Go
+version moves. They are not Dependabot alerts (Dependabot does not track the standard library), so
+re-run `govulncheck` when re-evaluating the pin.
 
 ### To Deploy on the cluster
 **Build and push your image to the location specified by `IMG`:**
@@ -68,6 +91,41 @@ make uninstall
 ```sh
 make undeploy
 ```
+
+## Metrics
+
+The controller-runtime metrics endpoint is **disabled**. Nothing in NNF scrapes it, and the
+Kubebuilder-scaffolded authn/authz filter that protected it
+(`filters.WithAuthenticationAndAuthorization`) linked `k8s.io/apiserver`, `cel-go`, `antlr`,
+`konnectivity-client`, OpenTelemetry and `google.golang.org/grpc` into the manager. That added 27
+module requirements and roughly 37MB of binary for code that was never executed, and it was the
+source of most of this repo's recurring Dependabot advisories.
+
+Nothing was deleted — the manifests and the e2e test are still present, just commented out or
+skipped. To re-enable:
+
+1. `cmd/main.go` — restore the import `"sigs.k8s.io/controller-runtime/pkg/metrics/filters"` and,
+   after `metricsServerOptions` is built, restore:
+
+   ```go
+   if secureMetrics {
+       metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
+   }
+   ```
+
+   Skipping this step leaves `:8443` unauthenticated; in that case enable `../network-policy`
+   in step 2 as well, so only namespaces labeled `metrics: enabled` can reach it.
+2. `config/default/kustomization.yaml` — uncomment `- metrics_service.yaml`, and the `patches:` key
+   together with its `manager_metrics_patch.yaml` entry (that patch passes
+   `--metrics-bind-address=:8443`; the manager's default is `0`, meaning off).
+3. `config/rbac/kustomization.yaml` — uncomment `metrics_auth_role.yaml`,
+   `metrics_auth_role_binding.yaml` and `metrics_reader_role.yaml`.
+4. `test/e2e/e2e_test.go` — drop the `Skip(...)` at the top of
+   "should ensure the metrics endpoint is serving metrics".
+5. Run `go mod tidy && go mod vendor` to pull the dependency tree back in.
+
+For Prometheus scraping and cert-manager-issued serving certs, also uncomment the `[PROMETHEUS]`
+and `[METRICS-WITH-CERTS]` sections in `config/default/kustomization.yaml`.
 
 ## Project Distribution
 
