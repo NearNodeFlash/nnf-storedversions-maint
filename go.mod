@@ -5,7 +5,7 @@ go 1.26.5
 replace sigs.k8s.io/kube-storage-version-migrator => sigs.k8s.io/kube-storage-version-migrator v0.0.6-0.20230721195810-5c8923c5ff96
 
 require (
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	github.com/onsi/ginkgo/v2 v2.28.2
 	github.com/onsi/gomega v1.43.0
 	go.uber.org/zap v1.28.0
